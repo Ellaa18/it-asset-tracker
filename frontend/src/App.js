@@ -2,12 +2,17 @@ import React, { useState } from 'react';
 import './App.css';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Archive, Box, CheckCircle2, Download, Edit3, Layers3, Plus, Trash2, X } from 'lucide-react';
+import { Archive, Box, CheckCircle2, Download, Edit3, FileJson, Layers3, Plus, Trash2, Upload, X } from 'lucide-react';
 
 function App() {
   const [assets, setAssets] = useState(() => {
     const savedAssets = localStorage.getItem('it-assets');
-    return savedAssets ? JSON.parse(savedAssets) : [];
+    try {
+      return savedAssets ? JSON.parse(savedAssets) : [];
+    } catch (error) {
+      localStorage.removeItem('it-assets');
+      return [];
+    }
   });
   const [form, setForm] = useState({ id: null, name: '', owner: '', status: '' });
   const [searchTerm, setSearchTerm] = useState('');
@@ -15,10 +20,12 @@ function App() {
   const [sortField, setSortField] = useState('id');
   const [statusFilter, setStatusFilter] = useState('');
   const [isEditing, setIsEditing] = useState(false);
+  const [notice, setNotice] = useState('');
 
   const saveAssets = nextAssets => {
     setAssets(nextAssets);
     localStorage.setItem('it-assets', JSON.stringify(nextAssets));
+    setNotice('Saved just now');
   };
 
   const handleChange = e => {
@@ -78,12 +85,46 @@ function App() {
     doc.save('it-assets.pdf');
   };
 
+  const exportJSON = () => {
+    const blob = new Blob([JSON.stringify(assets, null, 2)], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'orbitops-assets.json';
+    link.click();
+    URL.revokeObjectURL(link.href);
+    setNotice('Backup downloaded');
+  };
+
+  const importJSON = event => {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = loadEvent => {
+      try {
+        const importedAssets = JSON.parse(loadEvent.target.result);
+        if (!Array.isArray(importedAssets) || importedAssets.some(asset => !asset.name || !asset.owner || !asset.status)) throw new Error('Invalid format');
+        saveAssets(importedAssets.map(asset => ({ ...asset, id: Number(asset.id) })));
+        setNotice(`${importedAssets.length} assets imported`);
+      } catch (error) {
+        setNotice('Import failed: choose a valid OrbitOps JSON backup');
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  };
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('');
+    setSearchField('name');
+  };
+
   return (
     <main className="app-shell">
       <header className="topbar"><div className="brand"><span className="brand-mark"><Layers3 size={20} /></span><span>Hermi<span className="brand-accent">Ela</span></span></div><div className="topbar-meta"><span className="status-dot" /> Local workspace <span className="avatar">IT</span></div></header>
       <div className="container">
       <section className="page-heading"><div><p className="eyebrow">OPERATIONS CONSOLE</p><h1>Asset inventory</h1><p className="subtitle">A clear view of every device, owner, and current state.</p></div><button className="button button-primary" onClick={() => document.querySelector('[name="name"]').focus()}><Plus size={17} /> Add asset</button></section>
-      <section className="metrics-grid"><div className="metric metric-blue"><Box size={19} /><div><span>Total assets</span><strong>{assets.length}</strong></div></div><div className="metric metric-green"><CheckCircle2 size={19} /><div><span>In use</span><strong>{assets.filter(asset => asset.status === 'In Use').length}</strong></div></div><div className="metric metric-amber"><Archive size={19} /><div><span>Available</span><strong>{assets.filter(asset => asset.status === 'Available').length}</strong></div></div><div className="metric metric-coral"><Box size={19} /><div><span>Attention</span><strong>{assets.filter(asset => ['In Repair', 'Damaged', 'Lost'].includes(asset.status)).length}</strong></div></div></section>
+      <section className="metrics-grid"><button className="metric metric-blue" onClick={clearFilters}><Box size={19} /><div><span>Total assets</span><strong>{assets.length}</strong><small>Show all</small></div></button><button className="metric metric-green" onClick={() => setStatusFilter('In Use')}><CheckCircle2 size={19} /><div><span>In use</span><strong>{assets.filter(asset => asset.status === 'In Use').length}</strong><small>Filter inventory</small></div></button><button className="metric metric-amber" onClick={() => setStatusFilter('Available')}><Archive size={19} /><div><span>Available</span><strong>{assets.filter(asset => asset.status === 'Available').length}</strong><small>Ready to assign</small></div></button><button className="metric metric-coral" onClick={() => setStatusFilter('In Repair')}><Box size={19} /><div><span>Attention</span><strong>{assets.filter(asset => ['In Repair', 'Damaged', 'Lost'].includes(asset.status)).length}</strong><small>Show repairs</small></div></button></section>
 
       <section className="workspace-panel"><div className="panel-heading"><div><h2>{isEditing ? 'Update asset' : 'Register an asset'}</h2><p>{isEditing ? 'Change the details and save your update.' : 'Add a device to keep your inventory current.'}</p></div></div><form onSubmit={handleSubmit}>
         <input
@@ -130,7 +171,7 @@ function App() {
       </form></section>
 
       {/* Search & Sort Controls */}
-      <section className="workspace-panel inventory-panel"><div className="panel-heading"><div><h2>Inventory list</h2><p>Search, sort, and manage registered assets.</p></div><button className="button button-outline" onClick={generatePDF}><Download size={16} /> Export PDF</button></div><div className="toolbar">
+      <section className="workspace-panel inventory-panel"><div className="panel-heading"><div><h2>Inventory list</h2><p>Search, sort, and manage registered assets.</p></div><div className="panel-actions"><button className="button button-outline" onClick={exportJSON}><FileJson size={16} /> Backup</button><label className="button button-outline file-button"><Upload size={16} /> Import<input type="file" accept="application/json" onChange={importJSON} /></label><button className="button button-outline" onClick={generatePDF}><Download size={16} /> Export PDF</button></div></div><div className="toolbar">
         <select
           value={searchField}
           onChange={(e) => setSearchField(e.target.value)}
@@ -175,6 +216,7 @@ function App() {
           <option value="Pending">Pending</option>
         </select>
       </div>
+      {(searchTerm || statusFilter) && <div className="active-filter"><span>Showing {sortedFilteredAssets.length} of {assets.length} assets</span><button onClick={clearFilters}><X size={14} /> Clear filters</button></div>}
 
       <table>
         <thead>
@@ -209,6 +251,7 @@ function App() {
           )}
         </tbody>
       </table></section>
+      {notice && <p className="save-notice" role="status">{notice}</p>}
     </div></main>
   );
 }

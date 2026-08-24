@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import './App.css';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -21,6 +21,7 @@ function App() {
   const [statusFilter, setStatusFilter] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [notice, setNotice] = useState('');
+  const formRef = useRef(null);
 
   const saveAssets = nextAssets => {
     setAssets(nextAssets);
@@ -53,6 +54,10 @@ function App() {
   const handleEdit = asset => {
     setForm(asset);
     setIsEditing(true);
+    requestAnimationFrame(() => {
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      formRef.current?.querySelector('[name="name"]')?.focus();
+    });
   };
 
   const sortedFilteredAssets = assets
@@ -126,7 +131,9 @@ function App() {
       <section className="page-heading"><div><p className="eyebrow">OPERATIONS CONSOLE</p><h1>Asset inventory</h1><p className="subtitle">A clear view of every device, owner, and current state.</p></div><button className="button button-primary" onClick={() => document.querySelector('[name="name"]').focus()}><Plus size={17} /> Add asset</button></section>
       <section className="metrics-grid"><button className="metric metric-blue" onClick={clearFilters}><Box size={19} /><div><span>Total assets</span><strong>{assets.length}</strong><small>Show all</small></div></button><button className="metric metric-green" onClick={() => setStatusFilter('In Use')}><CheckCircle2 size={19} /><div><span>In use</span><strong>{assets.filter(asset => asset.status === 'In Use').length}</strong><small>Filter inventory</small></div></button><button className="metric metric-amber" onClick={() => setStatusFilter('Available')}><Archive size={19} /><div><span>Available</span><strong>{assets.filter(asset => asset.status === 'Available').length}</strong><small>Ready to assign</small></div></button><button className="metric metric-coral" onClick={() => setStatusFilter('In Repair')}><Box size={19} /><div><span>Attention</span><strong>{assets.filter(asset => ['In Repair', 'Damaged', 'Lost'].includes(asset.status)).length}</strong><small>Show repairs</small></div></button></section>
 
-      <section className="workspace-panel"><div className="panel-heading"><div><h2>{isEditing ? 'Update asset' : 'Register an asset'}</h2><p>{isEditing ? 'Change the details and save your update.' : 'Add a device to keep your inventory current.'}</p></div></div><form onSubmit={handleSubmit}>
+      <section className="workspace-panel data-panel"><div className="panel-heading"><div><h2>Data protection</h2><p>Keep a portable copy of your inventory and restore it whenever you need.</p></div><FileJson className="data-panel-icon" size={25} /></div><div className="backup-grid"><div className="backup-card"><span className="backup-card-icon backup-download"><FileJson size={20} /></span><div><h3>Back up your data</h3><p>Download all asset records as a JSON file. Store it somewhere safe before switching devices.</p></div><button className="button button-primary" onClick={exportJSON}><Download size={16} /> Download backup</button></div><div className="backup-card"><span className="backup-card-icon backup-upload"><Upload size={20} /></span><div><h3>Restore from backup</h3><p>Choose a previous OrbitOps JSON backup to bring your asset records back into this browser.</p></div><label className="button button-outline file-button"><Upload size={16} /> Choose file<input type="file" accept="application/json" onChange={importJSON} /></label></div></div></section>
+
+      <section className="workspace-panel" ref={formRef}><div className="panel-heading"><div><h2>{isEditing ? 'Update asset' : 'Register an asset'}</h2><p>{isEditing ? 'Change the details and save your update.' : 'Add a device to keep your inventory current.'}</p></div></div><form onSubmit={handleSubmit}>
         <input
           name="name"
           placeholder="Asset Name"
@@ -171,7 +178,7 @@ function App() {
       </form></section>
 
       {/* Search & Sort Controls */}
-      <section className="workspace-panel inventory-panel"><div className="panel-heading"><div><h2>Inventory list</h2><p>Search, sort, and manage registered assets.</p></div><div className="panel-actions"><button className="button button-outline" onClick={exportJSON}><FileJson size={16} /> Backup</button><label className="button button-outline file-button"><Upload size={16} /> Import<input type="file" accept="application/json" onChange={importJSON} /></label><button className="button button-outline" onClick={generatePDF}><Download size={16} /> Export PDF</button></div></div><div className="toolbar">
+      <section className="workspace-panel inventory-panel"><div className="panel-heading"><div><h2>Inventory list</h2><p>Search, sort, and manage registered assets.</p></div><button className="button button-outline" onClick={generatePDF}><Download size={16} /> Export PDF</button></div><div className="toolbar">
         <select
           value={searchField}
           onChange={(e) => setSearchField(e.target.value)}

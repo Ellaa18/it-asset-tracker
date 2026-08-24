@@ -4,6 +4,8 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Archive, Box, CheckCircle2, Download, Edit3, FileJson, Layers3, Plus, Trash2, Upload, X } from 'lucide-react';
 
+const statusOptions = ['In Use', 'Available', 'In Repair', 'Retired', 'Lost', 'Damaged', 'Pending'];
+
 function App() {
   const [assets, setAssets] = useState(() => {
     const savedAssets = localStorage.getItem('it-assets');
@@ -38,14 +40,29 @@ function App() {
     e.preventDefault();
 
     if (isEditing) {
-      saveAssets(assets.map(asset => (asset.id === form.id ? form : asset)));
+      saveAssets(assets.map(asset => {
+        if (asset.id !== form.id) return asset;
+        const history = form.status !== asset.status
+          ? [...(asset.history || []), { from: asset.status, to: form.status, at: new Date().toISOString() }]
+          : asset.history || [];
+        return { ...form, history };
+      }));
       setForm({ id: null, name: '', owner: '', status: '' });
       setIsEditing(false);
     } else {
       const nextId = assets.reduce((highestId, asset) => Math.max(highestId, asset.id), 0) + 1;
-      saveAssets([...assets, { ...form, id: nextId }]);
+      saveAssets([...assets, { ...form, id: nextId, history: [{ from: 'New', to: form.status, at: new Date().toISOString() }] }]);
       setForm({ id: null, name: '', owner: '', status: '' });
     }
+  };
+
+  const handleStatusChange = (asset, nextStatus) => {
+    if (asset.status === nextStatus) return;
+    saveAssets(assets.map(item => item.id === asset.id ? {
+      ...item,
+      status: nextStatus,
+      history: [...(item.history || []), { from: item.status, to: nextStatus, at: new Date().toISOString() }],
+    } : item));
   };
 
   const handleDelete = id => {
@@ -142,7 +159,7 @@ function App() {
 
       <section className="workspace-panel data-panel"><div className="panel-heading"><div><h2>Data protection</h2><p>Keep a portable copy of your inventory and restore it whenever you need.</p></div><FileJson className="data-panel-icon" size={25} /></div><div className="backup-grid"><div className="backup-card"><span className="backup-card-icon backup-download"><FileJson size={20} /></span><div><h3>Back up your data</h3><p>Download all asset records as a JSON file. Store it somewhere safe before switching devices.</p></div><button className="button button-primary" onClick={exportJSON}><Download size={16} /> Download backup</button></div><div className="backup-card"><span className="backup-card-icon backup-upload"><Upload size={20} /></span><div><h3>Restore from backup</h3><p>Choose a previous OrbitOps JSON backup to bring your asset records back into this browser.</p></div><label className="button button-outline file-button"><Upload size={16} /> Choose file<input type="file" accept="application/json" onChange={importJSON} /></label></div></div></section>
 
-      <section className="workspace-panel" ref={formRef}><div className="panel-heading"><div><h2>{isEditing ? 'Update asset' : 'Register an asset'}</h2><p>{isEditing ? 'Change the details and save your update.' : 'Add a device to keep your inventory current.'}</p></div></div><form onSubmit={handleSubmit}>
+      <section className="workspace-panel" ref={formRef}><div className="panel-heading"><div><h2>{isEditing ? 'Update asset' : 'Register an asset'}</h2><p>{isEditing ? 'Change the details and save your update.' : 'Add a device to keep your inventory current.'}</p></div></div><div className="workflow-hint"><CheckCircle2 size={16} /> Change status directly in the inventory list as an asset moves through its lifecycle.</div><form onSubmit={handleSubmit}>
         <input
           name="name"
           placeholder="Asset Name"
@@ -164,13 +181,7 @@ function App() {
           required
         >
           <option value="">Select Status</option>
-          <option value="In Use">In Use</option>
-          <option value="Available">Available</option>
-          <option value="In Repair">In Repair</option>
-          <option value="Retired">Retired</option>
-          <option value="Lost">Lost</option>
-          <option value="Damaged">Damaged</option>
-          <option value="Pending">Pending</option>
+          {statusOptions.map(status => <option key={status} value={status}>{status}</option>)}
         </select>
         <button className="button button-primary" type="submit">{isEditing ? <><CheckCircle2 size={16} /> Save changes</> : <><Plus size={16} /> Add asset</>}</button>
         {isEditing && (
@@ -223,13 +234,7 @@ function App() {
           aria-label="Filter by status"
         >
           <option value="">All statuses</option>
-          <option value="In Use">In Use</option>
-          <option value="Available">Available</option>
-          <option value="In Repair">In Repair</option>
-          <option value="Retired">Retired</option>
-          <option value="Lost">Lost</option>
-          <option value="Damaged">Damaged</option>
-          <option value="Pending">Pending</option>
+          {statusOptions.map(status => <option key={status} value={status}>{status}</option>)}
         </select>
       </div>
       {(searchTerm || statusFilter) && <div className="active-filter"><span>Showing {sortedFilteredAssets.length} of {assets.length} assets{statusFilter === 'attention' ? ' needing attention' : statusFilter ? ` with status ${statusFilter}` : ''}</span><button onClick={clearFilters}><X size={14} /> Clear filters</button></div>}
@@ -241,13 +246,14 @@ function App() {
             <th>Name</th>
             <th>Owner</th>
             <th>Status</th>
+            <th>Updates</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {sortedFilteredAssets.length === 0 ? (
             <tr>
-              <td colSpan="5" style={{ textAlign: 'center' }}>
+              <td colSpan="6" style={{ textAlign: 'center' }}>
                 No assets found.
               </td>
             </tr>
@@ -257,7 +263,8 @@ function App() {
                 <td>{asset.id}</td>
                 <td>{asset.name}</td>
                 <td>{asset.owner}</td>
-                <td>{asset.status}</td>
+                <td><select className="row-status" value={asset.status} aria-label={`Change status for ${asset.name}`} onChange={e => handleStatusChange(asset, e.target.value)}>{statusOptions.map(status => <option key={status} value={status}>{status}</option>)}</select></td>
+                <td className="history-cell">{asset.history?.length || 0} change{(asset.history?.length || 0) === 1 ? '' : 's'}</td>
                 <td>
                   <button className="icon-button" title="Edit asset" aria-label={`Edit ${asset.name}`} onClick={() => handleEdit(asset)}><Edit3 size={16} /></button>{' '}
                   <button className="icon-button icon-danger" title="Delete asset" aria-label={`Delete ${asset.name}`} onClick={() => handleDelete(asset.id)}><Trash2 size={16} /></button>

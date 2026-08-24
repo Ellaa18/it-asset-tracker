@@ -1,22 +1,25 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import './App.css';
 import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable'; // Correct import
+import autoTable from 'jspdf-autotable';
+import { Archive, Box, CheckCircle2, Download, Edit3, Layers3, Plus, Trash2, X } from 'lucide-react';
 
 function App() {
-  const [assets, setAssets] = useState([]);
+  const [assets, setAssets] = useState(() => {
+    const savedAssets = localStorage.getItem('it-assets');
+    return savedAssets ? JSON.parse(savedAssets) : [];
+  });
   const [form, setForm] = useState({ id: null, name: '', owner: '', status: '' });
   const [searchTerm, setSearchTerm] = useState('');
   const [searchField, setSearchField] = useState('name');
   const [sortField, setSortField] = useState('id');
+  const [statusFilter, setStatusFilter] = useState('');
   const [isEditing, setIsEditing] = useState(false);
 
-  useEffect(() => {
-    fetch('http://localhost:5000/assets')
-      .then(res => res.json())
-      .then(setAssets)
-      .catch(err => console.error(err));
-  }, []);
+  const saveAssets = nextAssets => {
+    setAssets(nextAssets);
+    localStorage.setItem('it-assets', JSON.stringify(nextAssets));
+  };
 
   const handleChange = e => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -26,37 +29,18 @@ function App() {
     e.preventDefault();
 
     if (isEditing) {
-      fetch(`http://localhost:5000/assets/${form.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      })
-        .then(res => res.json())
-        .then(updatedAsset => {
-          setAssets(assets.map(asset => (asset.id === updatedAsset.id ? updatedAsset : asset)));
-          setForm({ id: null, name: '', owner: '', status: '' });
-          setIsEditing(false);
-        });
+      saveAssets(assets.map(asset => (asset.id === form.id ? form : asset)));
+      setForm({ id: null, name: '', owner: '', status: '' });
+      setIsEditing(false);
     } else {
-      fetch('http://localhost:5000/assets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      })
-        .then(res => res.json())
-        .then(data => {
-          setAssets([...assets, data]);
-          setForm({ id: null, name: '', owner: '', status: '' });
-        });
+      const nextId = assets.reduce((highestId, asset) => Math.max(highestId, asset.id), 0) + 1;
+      saveAssets([...assets, { ...form, id: nextId }]);
+      setForm({ id: null, name: '', owner: '', status: '' });
     }
   };
 
   const handleDelete = id => {
-    fetch(`http://localhost:5000/assets/${id}`, {
-      method: 'DELETE',
-    }).then(() => {
-      setAssets(assets.filter(a => a.id !== id));
-    });
+    saveAssets(assets.filter(asset => asset.id !== id));
   };
 
   const handleEdit = asset => {
@@ -66,7 +50,8 @@ function App() {
 
   const sortedFilteredAssets = assets
     .filter(asset =>
-      asset[searchField].toLowerCase().includes(searchTerm.toLowerCase())
+      asset[searchField].toLowerCase().includes(searchTerm.toLowerCase()) &&
+      (!statusFilter || asset.status === statusFilter)
     )
     .sort((a, b) => {
       const aValue = a[sortField];
@@ -94,10 +79,13 @@ function App() {
   };
 
   return (
-    <div className="container">
-      <h1>IT Asset Tracker</h1>
+    <main className="app-shell">
+      <header className="topbar"><div className="brand"><span className="brand-mark"><Layers3 size={20} /></span><span>Hermi<span className="brand-accent">Ela</span></span></div><div className="topbar-meta"><span className="status-dot" /> Local workspace <span className="avatar">IT</span></div></header>
+      <div className="container">
+      <section className="page-heading"><div><p className="eyebrow">OPERATIONS CONSOLE</p><h1>Asset inventory</h1><p className="subtitle">A clear view of every device, owner, and current state.</p></div><button className="button button-primary" onClick={() => document.querySelector('[name="name"]').focus()}><Plus size={17} /> Add asset</button></section>
+      <section className="metrics-grid"><div className="metric metric-blue"><Box size={19} /><div><span>Total assets</span><strong>{assets.length}</strong></div></div><div className="metric metric-green"><CheckCircle2 size={19} /><div><span>In use</span><strong>{assets.filter(asset => asset.status === 'In Use').length}</strong></div></div><div className="metric metric-amber"><Archive size={19} /><div><span>Available</span><strong>{assets.filter(asset => asset.status === 'Available').length}</strong></div></div><div className="metric metric-coral"><Box size={19} /><div><span>Attention</span><strong>{assets.filter(asset => ['In Repair', 'Damaged', 'Lost'].includes(asset.status)).length}</strong></div></div></section>
 
-      <form onSubmit={handleSubmit}>
+      <section className="workspace-panel"><div className="panel-heading"><div><h2>{isEditing ? 'Update asset' : 'Register an asset'}</h2><p>{isEditing ? 'Change the details and save your update.' : 'Add a device to keep your inventory current.'}</p></div></div><form onSubmit={handleSubmit}>
         <input
           name="name"
           placeholder="Asset Name"
@@ -127,7 +115,7 @@ function App() {
           <option value="Damaged">Damaged</option>
           <option value="Pending">Pending</option>
         </select>
-        <button type="submit">{isEditing ? 'Update' : 'Add'} Asset</button>
+        <button className="button button-primary" type="submit">{isEditing ? <><CheckCircle2 size={16} /> Save changes</> : <><Plus size={16} /> Add asset</>}</button>
         {isEditing && (
           <button
             type="button"
@@ -136,17 +124,17 @@ function App() {
               setForm({ id: null, name: '', owner: '', status: '' });
             }}
           >
-            Cancel
+            <X size={16} /> Cancel
           </button>
         )}
-      </form>
+      </form></section>
 
       {/* Search & Sort Controls */}
-      <div style={{ marginTop: '20px', marginBottom: '10px' }}>
+      <section className="workspace-panel inventory-panel"><div className="panel-heading"><div><h2>Inventory list</h2><p>Search, sort, and manage registered assets.</p></div><button className="button button-outline" onClick={generatePDF}><Download size={16} /> Export PDF</button></div><div className="toolbar">
         <select
           value={searchField}
           onChange={(e) => setSearchField(e.target.value)}
-          style={{ marginRight: '10px', padding: '8px' }}
+          className="compact-select"
         >
           <option value="name">Search by Name</option>
           <option value="owner">Search by Owner</option>
@@ -158,24 +146,35 @@ function App() {
           placeholder={`Search ${searchField}...`}
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          style={{ marginRight: '10px', padding: '8px', width: '40%' }}
+          className="search-input"
         />
 
         <select
           value={sortField}
           onChange={(e) => setSortField(e.target.value)}
-          style={{ padding: '8px' }}
+          className="compact-select"
         >
           <option value="id">Sort by ID</option>
           <option value="name">Sort by Name</option>
           <option value="owner">Sort by Owner</option>
           <option value="status">Sort by Status</option>
         </select>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="compact-select"
+          aria-label="Filter by status"
+        >
+          <option value="">All statuses</option>
+          <option value="In Use">In Use</option>
+          <option value="Available">Available</option>
+          <option value="In Repair">In Repair</option>
+          <option value="Retired">Retired</option>
+          <option value="Lost">Lost</option>
+          <option value="Damaged">Damaged</option>
+          <option value="Pending">Pending</option>
+        </select>
       </div>
-
-      <button onClick={generatePDF} style={{ marginBottom: '10px' }}>
-        Generate PDF
-      </button>
 
       <table>
         <thead>
@@ -202,17 +201,15 @@ function App() {
                 <td>{asset.owner}</td>
                 <td>{asset.status}</td>
                 <td>
-                  <button onClick={() => handleEdit(asset)}>Edit</button>{' '}
-                  <button onClick={() => handleDelete(asset.id)} className="delete-btn">
-                    Delete
-                  </button>
+                  <button className="icon-button" title="Edit asset" aria-label={`Edit ${asset.name}`} onClick={() => handleEdit(asset)}><Edit3 size={16} /></button>{' '}
+                  <button className="icon-button icon-danger" title="Delete asset" aria-label={`Delete ${asset.name}`} onClick={() => handleDelete(asset.id)}><Trash2 size={16} /></button>
                 </td>
               </tr>
             ))
           )}
         </tbody>
-      </table>
-    </div>
+      </table></section>
+    </div></main>
   );
 }
 

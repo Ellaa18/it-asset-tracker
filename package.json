@@ -1,4 +1,8 @@
 {
+  "scripts": {
+    "start": "npm --prefix frontend start",
+    "build": "npm --prefix frontend run build"
+  },
   "dependencies": {
     "jspdf": "^3.0.1",
     "jspdf-autotable": "^5.0.2"
